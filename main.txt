@@ -1,0 +1,386 @@
+# This 'main.txt' file contains all commands run interactively on the IBU cluster (linux system).
+# The necessary tools for this project have been installed on the IBU cluster
+# These .sh script files are located in the 'script_cluster' folder.
+# You can obtain the .sh scripts manually using a text editor (e.g., nano) or upload them to the cluster using 'scp'.
+# Pay close attention to the file paths, which may need to be modified 
+# The .R script files for analysis are located in the script_R folder. I ran these scripts on my laptop with R version 4.2.2. 
+
+
+################################# STEP1
+################################# PROCURE DATASETS
+
+# BioProject accession number: PRJNA550323
+
+
+
+# current path /data/courses/rnaseq_course/ribosome_profiling/mt/data
+
+# create and run load_sample.sh to download the samples
+nano raw/load_sample.sh
+sbatch
+
+
+# Give the fastq files appropriate names
+
+mv SRR9596295.fastq.gz somata_1.fastq.gz
+mv SRR9596296.fastq.gz somata_2.fastq.gz
+mv SRR9596300.fastq.gz somata_3.fastq.gz
+mv SRR9596310.fastq.gz neuropil_1.fastq.gz
+mv SRR9596303.fastq.gz neuropil_2.fastq.gz
+mv SRR9596304.fastq.gz neuropil_3.fastq.gz
+
+# delete the *.sra files
+rm *.sra
+
+
+
+###########################################################################################
+################################### QC Perform quality control checks on the FASTQ files
+
+
+nano fastqc.sh
+batch fastqc.sh
+
+
+
+
+#################################################################
+#################################    STEP2
+################################# PREPARE ANNOTATIONS
+
+########## “Undesired RNA” annotation
+
+##########  Organism of interest: Rattus norvegicus (Rat)
+
+# A FASTA file containing rRNA/snRNA/snoRNA sequences can be generated from Ensembl biomart 
+
+# Result:Dataset 3428 / 30562 Genes
+# save in a file named r_sn_snoRNA.txt
+
+
+#
+# tRNA FASTA sequences can be obtained from Genomic tRNA database
+# Search Rattus norvegicus
+# Select “Rattus norvegicus (Rat Nov. 2020 mRatBN7.2/rn7)”
+# On the left hand side, select “FASTA Seqs and Transcript Mapping”
+# Download “High confidence tRNA sequences: rn7-tRNAs.fa”
+
+
+#
+
+# Use NCBI Nucleotide module to procure 45S, 28S, 18S, 5.8S, 5S rRNA sequences.
+
+# Search -> click “Send to” on the top right -> select “File” -> Select Format: FASTA
+# download all 155 rRNA sequences that were shown in the result.
+
+
+#########
+
+# Concatenate three into one single FASTA file.(for sno-, sn- and r-RNA; tRNA; and rRNA), 
+# This is annotation for the “undesired” RNA.
+
+# File from ENSEMBL: r_sno_sn_RNA_ENSEMBL.txt  
+# File from NCBI: rRNA_NCBI.txt    
+# File from GtRNAdb: rn7-tRNAs_tRNADB.txt   
+
+mkdir annotation
+
+# upload files to cluster
+U:\>scp \Uni\RNASeq\*.txt tnguyen@binfservms01.unibe.ch:/data/courses/rnaseq_course/ribosome_profiling/mt/data/annotation
+
+cd annotation
+
+# Catenate the files
+cat *.txt > rnor_r_sno_sn_t_RNA.fa
+
+
+#######
+#######  Genome annotation: The reference genome annotation 
+
+# The reference genome annotation can be procured from Ensembl by clicking on the DNA(FASTA) of  Rattus norvegicus.
+# The file of interested named “Rattus_norvegicus.mRatBN7.2.dna.toplevel.fa.gz” 
+# The files are consistently named following this pattern:
+#   <species>.<assembly>.<sequence type>.<id type>.<id>.fa.gz
+
+# Download the relevant GTF file from Ensembl under “Gene sets” named Rattus_norvegicus.mRatBN7.2.110.gtf.gz 
+
+
+######
+######  Transcriptome annotation
+
+# from Ensembl biomart Dataset 23051/30562
+# Download the FAfrom Ensembl biomart STA file (called GRCh38_p13_APPRIS_CDS_plus18.fa in this module)
+
+
+
+
+#######
+#######    Prepare indices
+
+# prepare indices using bowtie aligner for each annotation.
+
+# upload annotation to cluster
+U:\>scp \Uni\RNASeq\MThanh\Data\* tnguyen@binfservms01.unibe.ch:/data/courses/rnaseq_course/ribosome_profiling/mt/data/annotation
+
+# unzip files
+gunzip *.gz
+
+###### index bowtie
+nano index.sh
+sbatch index.sh
+
+
+
+#####
+# Process transcriptome FASTA
+# to generate codon occupancy plots we require this file to be in single-line format
+# (Codon_occupancy_cal.sh for calculating codon occupancy only accecpt single-line format)
+
+awk '/^>/ { if(NR>1) print "";  printf("%s\n",$0); next; } { printf("%s",$0);}  END {printf("\n");}' < mRatBN7.2_rn7_APPRIS_CDS_plus18.fa > mRatBN7.2_rn7_APPRIS_CDS_plus18_SingleLine.fa
+
+
+#################################################################
+#################################    STEP3
+################################# DATA PRE PROCESSING
+
+##### Cip trim apdater
+
+# current working directory: /data/courses/rnaseq_course/ribosome_profiling/mt/data/
+
+cd raw
+
+# create folder to save clean file
+mkdir clpd_tr_fastq_gz_files
+# copy raw file to clip and trim
+cp *fastq.gz clpd_tr_fastq_gz_files
+
+cd clpd_tr_fastq_gz_files
+nano clip_trim.sh
+sbatch clip_trim.sh
+
+
+#################################################################
+#################################    STEP4
+################################# REMOVE UNDESIRED RNA
+
+
+# create new folder to save desired RNA
+mkdir -p  ../remove_undesiredRNA/new
+# copy _clpd_tr_fastq_gz files for mapping
+cp *_clpd_tr.fastq.gz ../remove_undesiredRNA/new/
+
+
+# change directory
+cd ../remove_undesiredRNA/new/
+nano reremove_undesiredRNA.sh
+sbatch remove_undesiredRNA.sh
+
+
+
+#################################################################
+#################################    STEP5
+#################################    MAPPING 
+                   
+
+##############
+############## MAPPING TO GENOME
+
+cd /data/courses/rnaseq_course/ribosome_profiling/mt/data/raw 
+
+# create new directory to store files
+mkdir map_genome
+
+cd map_genome
+nano map_genome.sh
+
+
+# Use bowtie to map the output files (the _desired_readsRNA.fastq files) to the genome. 
+# cp ../remove_undesiredRNA/new/*RNA.fastq . 
+
+
+sbatch map_genome.sh
+
+
+###############
+###############	Sort bam files resulted from mapping genome
+
+# Use SAMtools to convert SAM file to sorted BAM file
+
+# These sorted BAM files would be used for QC purpose and differential expression analysis.
+
+nano sort_bam_files.sh
+
+sbatch sort_bam_files.sh
+
+
+#########################################
+############## MAPPING TO TRANSCRIPTOME
+
+cd /data/courses/rnaseq_course/ribosome_profiling/mt/data/raw/
+
+# create new directory to store files
+mkdir map_transcriptome
+
+cd map_transcriptome
+nano map_transcriptome.sh
+
+# copy _desired_readsRNA for mapping
+cp ../remove_undesiredRNA/new/*RNA.fastq . 
+
+# Use bowtie to map the output files from the remove undesired RNA step to the transcriptome. 
+sbatch map_transcriptome
+
+
+###############################################
+
+# Note: After this step the analysis will split into two paths:
+
+# Mapping to the genome followed by differential expression and gene ontology analysis
+# Mapping to the transcriptome to determine ribosomal codon occupancy
+
+###############################################
+###################################
+						
+# PERFORM QUALITY CONTROL 
+#############################
+# Use RiboseQC ( an R package) to assess the quality of data
+###################################
+
+cd /data/courses/rnaseq_course/ribosome_profiling/mt/data/annotation
+
+#  Convert genome FASTA file to 2bit format
+
+mkdir faToTwoBit
+cp Rattus_norvegicus.mRatBN7.2.dna.toplevel.fa faToTwoBit/
+nano faToTwoBit.sh
+sbatch faToTwoBit.sh
+
+# download file from cluster to local machine
+scp tnguyen@binfservms01.unibe.ch:/data/courses/rnaseq_course/ribosome_profiling/mt/data/sorted_bam/*  F:/RNAseq/R/bam/
+
+scp tnguyen@binfservms01.unibe.ch:/data/courses/rnaseq_course/ribosome_profiling/mt/data/annotation/*.gtf  F:/RNAseq/R/annotation/
+
+scp tnguyen@binfservms01.unibe.ch:/data/courses/rnaseq_course/ribosome_profiling/mt/data/annotation/faToTwoBit/*.2bit  F:/RNAseq/R/annotation/
+
+# the RiboseQC didn't work 
+
+#################################################################
+#################################    STEP5
+#################################    ANALYSIS 
+						
+#        FOR GENOME
+#############################
+					
+
+					
+# DIFFERENTIAL EXPRESSION ANALYSIS
+#############################
+					
+# Generate count table
+
+
+cd /data/courses/rnaseq_course/ribosome_profiling/mt/data
+
+# make a new directory for sorted bam files, which are needed for generate count talbe
+mkdir sorted_bam
+cp raw/map_genome/*sorted.bam sorted_bam/
+
+# generate a table containing raw read counts for each gene (in rows) for each sample (in column) 
+# use featureCounts for counting reads on CDS and reads that are mapped to different biotypes
+# then use cut to extract the GeneID (column 1) and Sample columns (from 7 to 12) -> CDS_counts_processed.txt 
+# do the same with Biotype -> biotype_counts_processed.txt
+
+mkdir count_table
+cd count_table
+nano count_table.sh
+sbatch count_table.sh
+
+
+#############################
+# DESeq2 to perform the differential expression analysis on R
+#############################
+	
+
+						
+					
+# the folder in my local machine F:\RNAseq\R
+
+# download files from cluster: 
+scp tnguyen@binfservms01.unibe.ch:/data/courses/rnaseq_course/ribosome_profiling/mt/data/count_table/*  F:/RNAseq/R
+
+
+# see detail on R.script to understand the setting, making table and transform data data quality assessment, and plotting
+## Define differentially expressed genes threshold as:
+## Upregulated (LFC > 0.5 & padj < 0.05)
+## Downregulated (LFC < - 0.5 & padj < 0.05)
+
+#
+#
+# Use DESeq2 output file to do Gene ontology analysis with TopGo
+###################################
+# to determine the biological relevance of differentially expressed genes
+
+						
+
+#################################    ANALYSIS 
+						
+#        FOR TRANSCRIPTOME
+#############################
+
+# Determine codon occupancy
+###################################################################
+# SAM files from transcriptome mapping will be used to determine the A-site ribosome occupancy
+# that is normalized by positions +5, +6 and +7 
+# for codon occupancy calculations, download the script (called Codon_occupancy_cal.sh) From GitHub
+# https://github.com/LeidelLab/Codon_occupancy_cal
+
+# Codon_occupancy_cal.sh will only accept the single-line FASTA 
+# GRCh38_p13_APPRIS_CDS_plus18_SingleLine.fa 
+# awk '/^>/ { if(NR>1) print "";  printf("%s\n",$0); next; } { printf("%s",$0);}  END {printf("\n");}' < mRatBN7.2_rn7_APPRIS_CDS_plus18.fa > mRatBN7.2_rn7_APPRIS_CDS_plus18_SingleLine.fa
+
+
+cd /data/courses/rnaseq_course/ribosome_profiling/mt/data/
+mkdir codon_occupancy
+
+# use text editor, copy file Codon_occupancy_cal.sh to cluster script
+nano Codon_occupancy_cal.sh
+nano Codon_occupancy_generation.sh
+
+cp raw/map_transcriptome/*.sam codon_occupancy/
+cp annotation/*SingleLine.fa codon_occupancy/
+
+chmod +x Codon_occupancy_generation.sh
+
+
+#
+#
+# this step was failed and cannot determine A-site ribosome occupancy 
+# Codon_occupancy_cal.sh running but not generates data to .txt file
+#############################################################################
+
+# WRAP UP WITH MULTIQC
+
+
+cd data/courses/rnaseq_course/ribosome_profiling/mt/data/
+
+# new directory for multiqc result of clipped, trimmed files
+mkdir multiqcresult
+
+cp raw/fastqc_clipped_trimmed/* multiqcresult/
+
+nano multifastqc.sh
+sbatch multifastqc.sh
+
+
+######################
+cd data/courses/rnaseq_course/ribosome_profiling/mt/data/
+
+# new directory for multiqc result of CDS and biotype summary files
+mkdir multiQCcounttable
+
+cp count_table/*.txt.summary multiQCcounttable/
+
+nano multi_cds_biotype_summary.sh
+sbatch multi_cds_biotype_summary.sh	
+
+###########################################################
