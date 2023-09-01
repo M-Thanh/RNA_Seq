@@ -47,6 +47,8 @@ Estimation of codon decoding speed
 
 
 *** the main.txt contains all commands run interactive on cluster IBU (linux system)
+
 *** the .sh script files to run on cluster are on folder script_cluster
+
 *** the .R script files are on folder script_R (I run on my own laptop, R version 4.2.2)
 
