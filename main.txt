@@ -39,7 +39,7 @@ rm *.sra
 
 
 nano fastqc.sh
-batch fastqc.sh
+sbatch fastqc.sh
 
 
 
