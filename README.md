@@ -32,17 +32,17 @@ Go throught the basic Ribosome profiling data analysis in this project step by s
 Work flow:
 
 Find the data of interest
-Procure the data
-Quality control
-Data preprocessing
-Prepare annotations
-Remove undesired RNA
-Map to genome
-Map to transcriptome
-QC: Periodicity, read distribution, frame
-Differential expression analysis
-GO analysis
-Estimation of codon decoding speed
+-> Procure the data
+-> Quality control
+-> Data preprocessing
+-> Prepare annotations
+-> Remove undesired RNA
+-> Map to genome
+-> Map to transcriptome
+-> QC: Periodicity, read distribution, frame
+-> Differential expression analysis
+-> GO analysis
+-> Estimation of codon decoding speed
 
 
 
